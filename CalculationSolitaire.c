@@ -27,7 +27,7 @@ typedef struct
 
 // globals argument
 Card stock[NUM_STOCK], lead[4][NUM_STOCK], stuck[4][NUM_STOCK + 5], showup;
-char *nextlead[4], log_playerchoise[NUM_STOCK][10];
+char *nextlead[4], log_playerchoise[NUM_STOCK][20];
 int stop = 0, turn = 0, log_counter = 0;
 
 /*行動が取られる度にテーブルを更新します。*/
@@ -65,7 +65,6 @@ void endgame(void);
 
 int main(void)
 {
-    int i;
     initialize_game(stock, stuck);
     //    shuffle(stock);
 
@@ -281,7 +280,13 @@ void dis_card(int lead_point)
     else
     {
         printf("Invalid action: showup does not match nextlead on point %d\n", lead_point);
-        player_action();
+        // Recursion removed, control returns to player_action loop in main, but player_action calls itself?
+        // Wait, player_action is called from update_table.
+        // If an error occurs here, we just return. update_table will be called again by main loop?
+        // No. main calls update_table, update_table calls player_action.
+        // If dis_card returns, player_action finishes, update_table finishes, main loop repeats, update_table called again.
+        // Yes, that works. But we need to ensure player_action doesn't exit immediately on next call if input is not consumed.
+        // With fgets, we consume input line.
     }
 }
 
@@ -304,70 +309,81 @@ void dis_stuck(int stuck_point, int lead_point)
     else
     {
         printf("Invalid action: Stuck card at position %d in point %d does not match next lead card at point %d\n", i, stuck_point, lead_point);
-        player_action();
     }
 }
 
 void player_action(void)
 {
-    char request[7], first_str[3], second_str[3], action[3];
+    char line[256];
+    char first_str[3], second_str[3], action[3];
     int stuck_point, lead_point;
 
-    printf("\n%s (1~4):%s stuckpoint\n%s (1~4):%s leadpoint\n%s (1~4) (1~4):%s stuckpoint leadpoint\nud :undo\ned :endgame\n\n", playeraction_1[0], playeraction_1[1], playeraction_2[0], playeraction_2[1], playeraction_3[0], playeraction_3[1]);
+    while (1) {
+        printf("\n%s (1~4):%s stuckpoint\n%s (1~4):%s leadpoint\n%s (1~4) (1~4):%s stuckpoint leadpoint\nud :undo\ned :endgame\n\n", playeraction_1[0], playeraction_1[1], playeraction_2[0], playeraction_2[1], playeraction_3[0], playeraction_3[1]);
 
-    scanf("%6s", request);
-    getchar();
-
-    sscanf(request, "%2s %1s %1s", action, first_str, second_str);
-
-    if (strcmp(action, playeraction_1[0]) != 0 && strcmp(action, playeraction_2[0]) != 0 && strcmp(action, playeraction_3[0]) != 0 && strcmp(action, "ud") != 0 && strcmp(action, "ed") != 0)
-    {
-        printf("Invalid action. Please try again.\n");
-        player_action();
-        return;
-    }
-
-    stuck_point = atoi(first_str);
-
-    if ((stuck_point < 1 || stuck_point > 4) && strcmp(action, "ed") != 0 && strcmp(action, "ud") != 0)
-    {
-        printf("Invalid stuck point. Please try again.\n");
-        player_action();
-        return;
-    }
-
-    if (strcmp(action, playeraction_3[0]) == 0 && strcmp(action, "ed") != 0 && strcmp(action, "ud") != 0)
-    {
-        lead_point = atoi(second_str);
-        if (lead_point < 1 || lead_point > 4)
-        {
-            printf("Invalid lead point. Please try again.\n");
-            player_action();
+        if (fgets(line, sizeof(line), stdin) == NULL) {
+            stop = 1;
             return;
         }
-    }
 
-    if (strcmp(action, "ms") == 0)
-    {
-        make_stuck(stuck_point);
-    }
-    else if (strcmp(action, "dc") == 0)
-    {
-        lead_point = stuck_point;
-        stuck_point = '\0';
-        dis_card(lead_point);
-    }
-    else if (strcmp(action, "ds") == 0)
-    {
-        dis_stuck(stuck_point, lead_point);
-    }
-    else if (strcmp(action, "ud") == 0)
-    {
-        undo();
-    }
-    else if (strcmp(action, "ed") == 0)
-    {
-        endgame();
+        // Initialize variables
+        memset(action, 0, sizeof(action));
+        memset(first_str, 0, sizeof(first_str));
+        memset(second_str, 0, sizeof(second_str));
+
+        sscanf(line, "%2s %2s %2s", action, first_str, second_str);
+
+        if (strcmp(action, playeraction_1[0]) != 0 && strcmp(action, playeraction_2[0]) != 0 && strcmp(action, playeraction_3[0]) != 0 && strcmp(action, "ud") != 0 && strcmp(action, "ed") != 0)
+        {
+            printf("Invalid action. Please try again.\n");
+            continue;
+        }
+
+        stuck_point = atoi(first_str);
+
+        if ((stuck_point < 1 || stuck_point > 4) && strcmp(action, "ed") != 0 && strcmp(action, "ud") != 0)
+        {
+            printf("Invalid stuck point. Please try again.\n");
+            continue;
+        }
+
+        if (strcmp(action, playeraction_3[0]) == 0 && strcmp(action, "ed") != 0 && strcmp(action, "ud") != 0)
+        {
+            lead_point = atoi(second_str);
+            if (lead_point < 1 || lead_point > 4)
+            {
+                printf("Invalid lead point. Please try again.\n");
+                continue;
+            }
+        }
+
+        if (strcmp(action, "ms") == 0)
+        {
+            make_stuck(stuck_point);
+            break;
+        }
+        else if (strcmp(action, "dc") == 0)
+        {
+            lead_point = stuck_point;
+            stuck_point = 0; // Was '\0', which is 0.
+            dis_card(lead_point);
+            break;
+        }
+        else if (strcmp(action, "ds") == 0)
+        {
+            dis_stuck(stuck_point, lead_point);
+            break;
+        }
+        else if (strcmp(action, "ud") == 0)
+        {
+            undo();
+            break;
+        }
+        else if (strcmp(action, "ed") == 0)
+        {
+            endgame();
+            break;
+        }
     }
 }
 
@@ -472,7 +488,7 @@ void initialize_game(Card stock[], Card stuck[][NUM_STOCK + 5])
     // initialize log
     for (i = 0; i < NUM_STOCK; i++)
     {
-        for (int j = 0; j < 10; j++)
+        for (int j = 0; j < 20; j++)
         {
             log_playerchoise[i][j] = '\0';
         }
